@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+#misc
+/praca_dyplomowa/dane
+/praca_dyplomowa/fonts
+
 # Distribution / packaging
 .Python
 build/
@@ -162,4 +166,3 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-praca_dyplomowa/dane
