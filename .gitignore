@@ -7,8 +7,8 @@ __pycache__/
 *.so
 
 #misc
-/praca_dyplomowa/dane
-/praca_dyplomowa/fonts
+dane/
+fonts/
 
 # Distribution / packaging
 .Python
@@ -133,7 +133,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-pd_venv
+pd_env
 
 # Spyder project settings
 .spyderproject

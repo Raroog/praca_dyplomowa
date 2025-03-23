@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from urllib.parse import urlparse
 
 import bibtexparser
@@ -19,7 +21,8 @@ class GetMalpediaBibFile:
 class ParseMalpediaBibFile:
     blacklist: list = ["youtube.com", "twitter.com"]
 
-    def __init__(self, bib_library: Library):
+    def __init__(self, path: str, bib_library: Library):
+        self.path = Path(path)
         self.bib_library = bib_library
         self.bib_library_entries = self.bib_library.entries
         self.bib_list_of_dicts = [
@@ -31,7 +34,7 @@ class ParseMalpediaBibFile:
         return {
             field.key: field.value
             for field in entry.fields
-            if field.key in ["url", "title"]
+            if field.key in ["urldate", "url", "title", "language"]
         }
 
     def bib_lib_entries_titles_links(self):
@@ -45,3 +48,8 @@ class ParseMalpediaBibFile:
             ).hostname
             not in self.blacklist
         ]
+
+    def save_dict_as_json(self):
+        path_to_save = self.path / "bibs.json"
+        with open(path_to_save, "w") as file:
+            json.dump(self.bib_list_of_dicts, file, indent=4)
