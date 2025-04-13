@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunsplit
@@ -8,6 +9,8 @@ import aiofiles
 import aiohttp
 from bs4 import BeautifulSoup
 from trafilatura import extract
+
+logger = logging.getLogger(__name__)
 
 
 class Scraper:
@@ -33,6 +36,7 @@ class Scraper:
                 )
 
         if self.requests_html is not None:
+            logger.info("Successfully downloaded site HTML")
             self.html_soup = BeautifulSoup(self.requests_html, "html.parser")
             self.text_from_html = extract(self.requests_html, output_format="txt")
             self.images_list = self.extract_image_metadata()
@@ -53,6 +57,7 @@ class Scraper:
                     "element": img,  # Store reference to original element
                 }
             )
+        logger.info("Extracted image data")
         return images
 
     def get_text_with_image_markers(self) -> str:
@@ -65,7 +70,8 @@ class Scraper:
         # Replace each image with a marker
         for img_data in self.images_list:
             img_element = soup_copy.find(
-                "img", src=img_data["src"], alt=img_data["alt"]
+                "img",
+                src=img_data["src"],
             )
             if img_element:
                 marker = soup_copy.new_string(f"[IMG:{img_data['id']}]")
@@ -73,6 +79,7 @@ class Scraper:
 
         # Extract text, removing excessive whitespace
         text = " ".join(soup_copy.get_text().split())
+        logger.info("Constructed text with image markers from HTML")
         return text
 
     async def scrape_images(self):
@@ -104,10 +111,14 @@ class Scraper:
                     filename.parent.mkdir(parents=True, exists_ok=True)
                     async with aiofiles.open(filename, mode="wb") as f:
                         await f.write(await response.read())
+                    logger.info(
+                        "Successfully downloaded image: %s, from url: %s",
+                        (filename, url),
+                    )
                     return True
                 return False
         except Exception as e:
-            print(f"Error downloading {url}: {e}")
+            logger.exception("%s: %s", (url, e))
             return False
 
     async def save_metadata(self, output_path: Path) -> None:
@@ -122,3 +133,4 @@ class Scraper:
         async with aiofiles.open(output_path, "w") as f:
             json_str = json.dumps(clean_images, indent=2)
             await f.write(json_str)
+        logger.info("Saved image metadata at %s", output_path)
