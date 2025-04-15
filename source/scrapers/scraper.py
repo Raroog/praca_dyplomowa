@@ -108,20 +108,21 @@ class Scraper:
         try:
             async with session.get(url) as response:
                 if response.status == 200:
-                    filename.parent.mkdir(parents=True, exists_ok=True)
+                    filename.parent.mkdir(exist_ok=True)
                     async with aiofiles.open(filename, mode="wb") as f:
                         await f.write(await response.read())
                     logger.info(
                         "Successfully downloaded image: %s, from url: %s",
-                        (filename, url),
+                        filename,
+                        url,
                     )
                     return True
                 return False
         except Exception as e:
-            logger.exception("%s: %s", (url, e))
+            logger.exception("%s: %s", url, e)
             return False
 
-    async def save_metadata(self, output_path: Path) -> None:
+    async def save_metadata(self, output_path: Path | str) -> None:
         """Save image metadata to a JSON file."""
         # Remove the BeautifulSoup element reference before saving
         clean_images = []
@@ -134,3 +135,8 @@ class Scraper:
             json_str = json.dumps(clean_images, indent=2)
             await f.write(json_str)
         logger.info("Saved image metadata at %s", output_path)
+
+    async def save_text(self, text_path):
+        async with aiofiles.open(text_path, "w") as f:
+            await f.write(self.text_from_html)
+        logger.info("Saved image metadata at %s", text_path)

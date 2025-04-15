@@ -1,7 +1,6 @@
-# from .malpedia_library_downloader import GetMalpediaBibFile, ParseMalpediaBibFile
 import asyncio
 import logging
-from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 from logging_setup import setup_logging
@@ -9,8 +8,7 @@ from scrapers.malpedia_library_downloader import (
     GetMalpediaBibFile,
     ParseMalpediaBibFile,
 )
-
-# from .scrapers.scraper import Scraper
+from scrapers.scraper import Scraper
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +24,6 @@ def load_config(config_path="/home/bartek/Kod/PD/praca_dyplomowa/config.yaml"):
 
 
 async def main():
-    print("aaaaa")
-
     config = load_config()
     setup_logging(config)
     base_path = config.get("scraping", {}).get("base_path")
@@ -37,13 +33,24 @@ async def main():
 
     bib_parser = ParseMalpediaBibFile(base_path, bib_file)
 
-    # bib_parser.save_dict_as_json()
+    bib_parser.save_dict_as_json()
 
-    # scraper = await Scraper.create(url="klk", output_path="jvyg")
+    for site_data_dict in bib_parser.bib_list_of_dicts[10:20]:
+        url = site_data_dict["url"]
+        if urlparse(url.replace("www.", "")).hostname in bib_parser.blacklist:
+            continue
+        output_path = site_data_dict["title"].strip("{}").replace(" ", "_")
+        output_path = f"{base_path}/{output_path}"
+        scraper = await Scraper.create(url=url, output_path=output_path)
 
-    # results = await scraper.scrape_images()
+        results = await scraper.scrape_images()
+        print(results)
+        if results["successes"]:
+            metadata_path = f"{output_path}/metadata.json"
+            text_path = f"{output_path}/content.txt"
 
-    # await scraper.save_metadata(Path("iweyugbdiwebd"))
+            await scraper.save_metadata(metadata_path)
+            await scraper.save_text(text_path)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ class GetMalpediaBibFile:
 
 
 class ParseMalpediaBibFile:
-    blacklist: list = ["youtube.com", "twitter.com"]
+    blacklist: list = ["youtube.com", "twitter.com", "x.com"]
 
     def __init__(self, path: str, bib_library: Library):
         self.path = Path(path)
@@ -36,6 +36,7 @@ class ParseMalpediaBibFile:
             self.bib_entry_fields_to_url_title_dict(entry)
             for entry in self.bib_library_entries
         ]
+        # self.bib_list_of_dicts = self.bib_lib_entries_titles_links()
 
     def bib_entry_fields_to_url_title_dict(self, entry):
         result = {
@@ -43,7 +44,7 @@ class ParseMalpediaBibFile:
             for field in entry.fields
             if field.key in ["urldate", "url", "title", "language"]
         }
-        logger.info("Parsed bib entry fields to url-title dict")
+        # logger.info("Parsed bib entry fields to url-title dict")
         return result
 
     def bib_lib_entries_titles_links(self):
@@ -62,7 +63,7 @@ class ParseMalpediaBibFile:
 
     def save_dict_as_json(self):
         current_date = datetime.now().strftime("%Y-%m-%d")
-        path_to_save = self.path / current_date / "bibs.json"
+        path_to_save = self.path / f"{current_date}_bibs.json"
         with open(path_to_save, "w") as file:
             json.dump(self.bib_list_of_dicts, file, indent=4)
         logger.info("Saved list of url-title dicts as json at: %s", path_to_save)
