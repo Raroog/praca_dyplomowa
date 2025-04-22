@@ -35,22 +35,24 @@ async def main():
 
     bib_parser.save_dict_as_json()
 
-    for site_data_dict in bib_parser.bib_list_of_dicts[10:20]:
+    for site_data_dict in bib_parser.bib_list_of_dicts[20:30]:
         url = site_data_dict["url"]
         if urlparse(url.replace("www.", "")).hostname in bib_parser.blacklist:
             continue
-        output_path = site_data_dict["title"].strip("{}").replace(" ", "_")
-        output_path = f"{base_path}/{output_path}"
+        title_path = site_data_dict["title"].strip("{}").replace(" ", "_")
+        output_path = f"{base_path}/{title_path}"
         scraper = await Scraper.create(url=url, output_path=output_path)
 
         results = await scraper.scrape_images()
         print(results)
         if results["successes"]:
             metadata_path = f"{output_path}/metadata.json"
-            text_path = f"{output_path}/content.txt"
+            text_w_image_markers_path = f"{output_path}/text_w_image_markers.txt"
+            clean_text_path = f"{output_path}/clean_text.txt"
 
             await scraper.save_metadata(metadata_path)
-            await scraper.save_text(text_path)
+            await scraper.save_text_w_images(text_w_image_markers_path)
+            await scraper.save_clean_text(clean_text_path)
 
 
 if __name__ == "__main__":

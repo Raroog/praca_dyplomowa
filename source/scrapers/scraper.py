@@ -27,13 +27,27 @@ class Scraper:
     @classmethod
     async def create(cls, url: str, output_path: str):
         self = cls(url, output_path)
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(self.url) as response:
-                self.status_code = response.status
-                self.requests_html = (
-                    await response.text() if self.status_code == 200 else None
-                )
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.url) as response:
+                    self.status_code = response.status
+                    if self.status_code == 200:
+                        self.requests_html = await response.text()
+                    else:
+                        logger.warning(
+                            "Failed to download HTML: Status code %s for URL %s",
+                            self.status_code,
+                            self.url,
+                        )
+                    self.requests_html = None
+        except aiohttp.ClientError as e:
+            logger.error("HTTP error when accessing %s: %s", self.url, str(e))
+            self.status_code = 0
+            self.requests_html = None
+        except Exception as e:
+            logger.error("Unexpected error when accessing %s: %s", self.url, str(e))
+            self.status_code = 0
+            self.requests_html = None
 
         if self.requests_html is not None:
             logger.info("Successfully downloaded site HTML")
@@ -52,7 +66,7 @@ class Scraper:
             images.append(
                 {
                     "id": image_id,
-                    "filename": filename,
+                    "filename": filename[:100],
                     "src": img.get("src", "-"),
                     "element": img,  # Store reference to original element
                 }
@@ -109,7 +123,7 @@ class Scraper:
             async with session.get(url) as response:
                 if response.status == 200:
                     filename.parent.mkdir(exist_ok=True)
-                    async with aiofiles.open(filename, mode="wb") as f:
+                    async with aiofiles.open(f"{filename}", mode="wb") as f:
                         await f.write(await response.read())
                     logger.info(
                         "Successfully downloaded image: %s, from url: %s",
@@ -136,7 +150,12 @@ class Scraper:
             await f.write(json_str)
         logger.info("Saved image metadata at %s", output_path)
 
-    async def save_text(self, text_path):
+    async def save_clean_text(self, text_path):
         async with aiofiles.open(text_path, "w") as f:
             await f.write(self.text_from_html)
-        logger.info("Saved image metadata at %s", text_path)
+        logger.info("Saved clean text at %s", text_path)
+
+    async def save_text_w_images(self, text_path):
+        async with aiofiles.open(text_path, "w") as f:
+            await f.write(self.text_w_images)
+        logger.info("Saved text with image markers at %s", text_path)
