@@ -1,9 +1,11 @@
 import asyncio
+import base64
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse, urlunsplit
+from urllib.parse import unquote, urlparse, urlunsplit
 
 import aiofiles
 import aiohttp
@@ -32,6 +34,7 @@ class Scraper:
                 async with session.get(self.url) as response:
                     self.status_code = response.status
                     if self.status_code == 200:
+                        logger.info("Started downloading data from url %s", self.url)
                         self.requests_html = await response.text()
                     else:
                         logger.warning(
@@ -39,7 +42,7 @@ class Scraper:
                             self.status_code,
                             self.url,
                         )
-                    self.requests_html = None
+                        self.requests_html = None
         except aiohttp.ClientError as e:
             logger.error("HTTP error when accessing %s: %s", self.url, str(e))
             self.status_code = 0
@@ -62,17 +65,45 @@ class Scraper:
         images = []
         for i, img in enumerate(self.html_soup.find_all("img")):
             image_id = f"{i + 1}"
-            filename = Path(img.get("src", "-")).name
+            src = self.decode_image_url(img.get("src", "-"))
+            filename = Path(src).name
             images.append(
                 {
                     "id": image_id,
                     "filename": filename[:100],
-                    "src": img.get("src", "-"),
+                    "src": src,
                     "element": img,  # Store reference to original element
                 }
             )
         logger.info("Extracted image data")
         return images
+
+    def decode_image_url(self, src):
+        # Check if it's a data URL with Base64 encoded SVG
+        if src.startswith("data:image/svg+xml;base64,"):
+            try:
+                # Extract the Base64 part
+                base64_data = src.split("base64,")[1]
+
+                # Decode the SVG
+                svg_content = base64.b64decode(base64_data).decode("utf-8")
+
+                # Use regex to extract data-u attribute (more efficient than parsing full XML)
+                match = re.search(r'data-u=["\']([^"\']+)["\']', svg_content)
+                if match:
+                    original_url = unquote(match.group(1))
+                    return original_url
+
+                # If regex fails, try parsing as XML
+                svg_soup = BeautifulSoup(svg_content, "xml")
+                svg_element = svg_soup.find("svg")
+                if svg_element and svg_element.has_attr("data-u"):
+                    return unquote(svg_element["data-u"])
+            except Exception:
+                # If decoding fails, just return the original
+                pass
+
+        return src
 
     def get_text_with_image_markers(self) -> str:
         """
@@ -148,14 +179,16 @@ class Scraper:
         async with aiofiles.open(output_path, "w") as f:
             json_str = json.dumps(clean_images, indent=2)
             await f.write(json_str)
-        logger.info("Saved image metadata at %s", output_path)
+        logger.info("Saved image metadata for url %s at %s", self.url, output_path)
 
     async def save_clean_text(self, text_path):
         async with aiofiles.open(text_path, "w") as f:
             await f.write(self.text_from_html)
-        logger.info("Saved clean text at %s", text_path)
+        logger.info("Saved clean text for url %s at %s", self.url, text_path)
 
     async def save_text_w_images(self, text_path):
         async with aiofiles.open(text_path, "w") as f:
             await f.write(self.text_w_images)
-        logger.info("Saved text with image markers at %s", text_path)
+        logger.info(
+            "Saved text with image markers for url %s at %s", self.url, text_path
+        )
