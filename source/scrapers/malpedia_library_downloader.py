@@ -1,8 +1,8 @@
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 import bibtexparser
 import requests
@@ -26,7 +26,7 @@ class GetMalpediaBibFile:
 
 
 class ParseMalpediaBibFile:
-    blacklist: list = ["youtube.com", "twitter.com", "x.com"]
+    # blacklist: list =
 
     def __init__(self, path: str, bib_library: Library):
         self.path = Path(path)
@@ -36,7 +36,27 @@ class ParseMalpediaBibFile:
             self.bib_entry_fields_to_url_title_dict(entry)
             for entry in self.bib_library_entries
         ]
-        # self.bib_list_of_dicts = self.bib_lib_entries_titles_links()
+        self.blacklist = [
+            "youtube.com",
+            "twitter.com",
+            "x.com",
+            "tccontre.blogspot.com",
+        ] + list(
+            (
+                self.extract_urls_from_log(
+                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application.log"
+                )
+                | self.extract_urls_from_log(
+                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application1.log"
+                )
+                | self.extract_urls_from_log(
+                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application2.log"
+                )
+                | self.extract_urls_from_log(
+                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application3.log"
+                )
+            )
+        )
 
     def bib_entry_fields_to_url_title_dict(self, entry):
         result = {
@@ -47,19 +67,20 @@ class ParseMalpediaBibFile:
         # logger.info("Parsed bib entry fields to url-title dict")
         return result
 
-    def bib_lib_entries_titles_links(self):
-        result = [
-            self.bib_entry_fields_to_url_title_dict(library_entry.fields)
-            for library_entry in self.bib_library_entries
-            if urlparse(
-                self.bib_entry_fields_to_url_title_dict(library_entry.fields)[
-                    "url"
-                ].replace("www.", "")
-            ).hostname
-            not in self.blacklist
-        ]
-        logger.info("Parsed bib file to list of url-title dicts")
-        return result
+    def extract_urls_from_log(self, log_file_path):
+        urls = set()
+
+        # Pattern to match "Started downloading data from url" followed by a URL
+        pattern = r"Started downloading data from url\s+(https?://\S+)"
+
+        with open(log_file_path, "r") as file:
+            for line in file:
+                match = re.search(pattern, line)
+                if match:
+                    url = match.group(1)
+                    urls.add(url)
+
+        return urls
 
     def save_dict_as_json(self):
         current_date = datetime.now().strftime("%Y-%m-%d")

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from urllib.parse import urlparse
 
 import yaml
@@ -31,7 +32,13 @@ async def process_site(session, site_data_dict, base_path, blacklist):
         return {"url": url, "status": "skipped_blacklist"}
 
     try:
-        title_path = site_data_dict["title"].strip("{}").replace(" ", "_")
+        title_path = (
+            site_data_dict["title"]
+            .strip("{}")
+            .strip(".")
+            .replace(" ", "_")
+            .replace("/", "_")
+        )
         output_path = f"{base_path}/{title_path}"
 
         scraper = await Scraper.create(
@@ -74,6 +81,7 @@ async def process_site(session, site_data_dict, base_path, blacklist):
 
 async def main():
     config = load_config()
+
     setup_logging(config)
     base_path = config.get("scraping", {}).get("base_path")
 
@@ -109,9 +117,7 @@ async def main():
                 )
 
         # Process all sites concurrently but limited by the semaphore
-        tasks = [
-            process_with_semaphore(site) for site in bib_parser.bib_list_of_dicts[:100]
-        ]
+        tasks = [process_with_semaphore(site) for site in bib_parser.bib_list_of_dicts]
 
         # Process sites in batches to avoid overwhelming memory
         # With 32GB RAM, we can handle larger batches
