@@ -41,22 +41,23 @@ class ParseMalpediaBibFile:
             "twitter.com",
             "x.com",
             "tccontre.blogspot.com",
-        ] + list(
-            (
-                self.extract_urls_from_log(
-                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application.log"
-                )
-                | self.extract_urls_from_log(
-                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application1.log"
-                )
-                | self.extract_urls_from_log(
-                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application2.log"
-                )
-                | self.extract_urls_from_log(
-                    "/home/bartek/Kod/PD/praca_dyplomowa/logs/application3.log"
-                )
-            )
-        )
+        ]
+        # list(
+        #     (
+        #         self.extract_urls_from_log(
+        #             "/home/bartek/Kod/PD/praca_dyplomowa/logs/application.log"
+        #         )
+        #         | self.extract_urls_from_log(
+        #             "/home/bartek/Kod/PD/praca_dyplomowa/logs/application1.log"
+        #         )
+        #         | self.extract_urls_from_log(
+        #             "/home/bartek/Kod/PD/praca_dyplomowa/logs/application2.log"
+        #         )
+        #         | self.extract_urls_from_log(
+        #             "/home/bartek/Kod/PD/praca_dyplomowa/logs/application3.log"
+        #         )
+        #     )
+        # )`
 
     def bib_entry_fields_to_url_title_dict(self, entry):
         result = {

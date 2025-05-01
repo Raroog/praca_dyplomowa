@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import re
+from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
@@ -40,6 +40,10 @@ async def process_site(session, site_data_dict, base_path, blacklist):
             .replace("/", "_")
         )
         output_path = f"{base_path}/{title_path}"
+
+        if Path(output_path).exists():
+            logger.info(f"Skipping existing directory: {output_path} for URL: {url}")
+            return {"url": url, "status": "skipped_existing"}
 
         scraper = await Scraper.create(
             url=url,
@@ -117,7 +121,10 @@ async def main():
                 )
 
         # Process all sites concurrently but limited by the semaphore
+
         tasks = [process_with_semaphore(site) for site in bib_parser.bib_list_of_dicts]
+
+        print("tasks: ", len(tasks))
 
         # Process sites in batches to avoid overwhelming memory
         # With 32GB RAM, we can handle larger batches

@@ -25,7 +25,7 @@ def load_config(config_path="/home/bartek/Kod/PD/praca_dyplomowa/config.yaml"):
 
 
 def extract_urls_from_log(log_file_path):
-    urls = []
+    urls = list()
 
     # Pattern to match "Started downloading data from url" followed by a URL
     pattern = r"Started downloading data from url\s+(https?://\S+)"
@@ -46,7 +46,7 @@ async def main():
     base_path = config.get("scraping", {}).get("base_path")
 
     log_path = config.get("application", {}).get("log_file")
-    started_urls_list = extract_urls_from_log(log_path)
+    started_urls_set = extract_urls_from_log(log_path)
 
     malpedia_bib = GetMalpediaBibFile()
     bib_file = malpedia_bib.bib_library
