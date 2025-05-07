@@ -28,13 +28,24 @@ class Assemble_Clean_Text:
     ) -> None:
         self.path = path
         self.trafilatura_text = trafilatura_text
-        self.trafilatura_words_list = self.split_ttext_to_words()
-        self.first_trafilatura_text_word = self.trafilatura_words_list[0].strip("- ")
+        self.trafilatura_words_list = ["<!*start*!>"]
+        self.trafilatura_words_list.extend(self.split_ttext_to_words())
+        # self.first_trafilatura_text_word = self.trafilatura_words_list[0].strip("- ")
+        self.first_trafilatura_text_word = "<!*start*!>"
         self.img_markers_text = img_markers_text
         self.img_markers_words_list = self.img_markers_text.split(" ")
         logger.debug("Split text with image markers into list for %s", self.path.stem)
         self.words_list_diff = list(
-            ndiff(self.trafilatura_words_list, self.img_markers_words_list)
+            ndiff(
+                self.trafilatura_words_list,
+                self.img_markers_words_list,
+            )
+        )
+        self.reversed_words_list_diff = list(
+            ndiff(
+                list(reversed(self.trafilatura_words_list)),
+                list(reversed(self.img_markers_words_list)),
+            )
         )
         self.clean_text_w_img_markers = self.assemble_clean_text_w_img_markers()
         self.image_markers_from_clean_text = (
@@ -46,7 +57,7 @@ class Assemble_Clean_Text:
         words_list = []
         for line in self.trafilatura_text.splitlines():
             words_list.extend(line.split(" "))
-        words_list.append("stop")
+        words_list.append("<!*stop*!>")
         logger.debug("Split trafiltura text into list of words for %s", self.path.stem)
         return words_list
 
@@ -54,9 +65,9 @@ class Assemble_Clean_Text:
         clean_words_list = []
         for word in self.words_list_diff:
             if not word.startswith("+") or re.search(self.IMG_MARKER_PATTERN, word):
-                clean_words_list.append(word.strip("- "))
+                clean_words_list.append(word.strip("-+? "))
         start_index = clean_words_list.index(self.first_trafilatura_text_word)
-        stop_index = clean_words_list.index("stop")
+        stop_index = clean_words_list.index("<!*stop*!>")
         logger.info(
             "Assembled trafilatura text with image markers text for %s", self.path.stem
         )
@@ -135,13 +146,15 @@ if __name__ == "__main__":
         text_cleaner = Assemble_Clean_Text(ttext, image_text, site_path)
         # print("<>" * 40)
         print(text_cleaner.trafilatura_text)
+        print("--" * 40)
         print(text_cleaner.words_list_diff)
         print("--" * 40)
-        print(text_cleaner.clean_text_w_img_markers)
+        print(text_cleaner.reversed_words_list_diff)
+        # print(text_cleaner.clean_text_w_img_markers)
         print("--" * 40)
-        print(text_cleaner.image_markers_from_clean_text)
-        print("--" * 40)
-        print(text_cleaner.first_trafilatura_text_word)
+        # print(text_cleaner.image_markers_from_clean_text)
+        # print("--" * 40)
+        # print(text_cleaner.first_trafilatura_text_word)
 
         # text_cleaner.save_assembled_text()
         # text_cleaner.save_clean_metada()
