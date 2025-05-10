@@ -29,9 +29,8 @@ class Assemble_Clean_Text:
         self.path = path
         self.trafilatura_text = trafilatura_text
         self.trafilatura_words_list = ["<!*start*!>"]
-        self.trafilatura_words_list.extend(self.split_ttext_to_words())
-        # self.first_trafilatura_text_word = self.trafilatura_words_list[0].strip("- ")
-        self.first_trafilatura_text_word = "<!*start*!>"
+        self.trafilatura_text_split = self.split_ttext_to_words()
+        self.trafilatura_words_list.extend(self.trafilatura_text_split)
         self.img_markers_text = img_markers_text
         self.img_markers_words_list = self.img_markers_text.split(" ")
         logger.debug("Split text with image markers into list for %s", self.path.stem)
@@ -62,15 +61,32 @@ class Assemble_Clean_Text:
         return words_list
 
     def assemble_clean_text_w_img_markers(self):
-        clean_words_list = []
-        for word in self.words_list_diff:
-            if not word.startswith("+") or re.search(self.IMG_MARKER_PATTERN, word):
-                clean_words_list.append(word.strip("-+? "))
-        start_index = clean_words_list.index(self.first_trafilatura_text_word)
+        def make_clean_words_list(words_list_diff):
+            counter = 0
+            result = []
+            for word in words_list_diff:
+                if not word.startswith("+"):
+                    if counter < 10:
+                        counter += 1
+                    cleaned_word = word.strip("-? ")
+                    result.append(cleaned_word)
+                if re.search(self.IMG_MARKER_PATTERN, word):
+                    if counter < 10:
+                        counter += 1
+                        continue
+                    cleaned_word = word.strip("+ ")
+                    result.append(cleaned_word)
+            return result
+
+        clean_words_list = make_clean_words_list(self.words_list_diff)
+        reversed_clean_words_list = make_clean_words_list(self.reversed_words_list_diff)
+        start_index = list(reversed(reversed_clean_words_list)).index("<!*start*!>")
         stop_index = clean_words_list.index("<!*stop*!>")
         logger.info(
             "Assembled trafilatura text with image markers text for %s", self.path.stem
         )
+        # final_text =
+        # final_text[0] = self.first_trafilatura_text_word
         return " ".join(clean_words_list[start_index:stop_index])
 
     def extract_image_markers_from_clean_text(self):
@@ -131,7 +147,7 @@ if __name__ == "__main__":
 
     setup_logging(config)
     scraped_path = Path("/home/bartek/Kod/PD/praca_dyplomowa/dane/scraping")
-    for site_path in list(scraped_path.glob("*"))[14:18]:
+    for site_path in list(scraped_path.glob("*"))[18:22]:
         if str(site_path).endswith("json"):
             continue
         if not list(site_path.glob("*")):
@@ -142,15 +158,15 @@ if __name__ == "__main__":
             ttext = file.read()
         with open(image_text_path, "r") as file:
             image_text = file.read()
-        print(site_path.stem)
+        print(f"Title: {site_path.stem}")
         text_cleaner = Assemble_Clean_Text(ttext, image_text, site_path)
-        # print("<>" * 40)
+        print("<>" * 40)
         print(text_cleaner.trafilatura_text)
         print("--" * 40)
-        print(text_cleaner.words_list_diff)
+        print(text_cleaner.img_markers_text)
         print("--" * 40)
-        print(text_cleaner.reversed_words_list_diff)
-        # print(text_cleaner.clean_text_w_img_markers)
+        # print(text_cleaner.reversed_words_list_diff)
+        print(text_cleaner.clean_text_w_img_markers)
         print("--" * 40)
         # print(text_cleaner.image_markers_from_clean_text)
         # print("--" * 40)
