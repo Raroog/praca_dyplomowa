@@ -50,7 +50,7 @@ class Assemble_Clean_Text:
         self.image_markers_from_clean_text = (
             self.extract_image_markers_from_clean_text()
         )
-        self.clean_metadata = self.filter_metada_by_image_markers()
+        self.clean_metadata = self.filter_metadata_by_image_markers()
 
     def split_ttext_to_words(self):
         words_list = []
@@ -85,8 +85,6 @@ class Assemble_Clean_Text:
         logger.info(
             "Assembled trafilatura text with image markers text for %s", self.path.stem
         )
-        # final_text =
-        # final_text[0] = self.first_trafilatura_text_word
         return " ".join(clean_words_list[start_index:stop_index])
 
     def extract_image_markers_from_clean_text(self):
@@ -98,7 +96,7 @@ class Assemble_Clean_Text:
             )
         ]
 
-    def filter_metada_by_image_markers(self):
+    def filter_metadata_by_image_markers(self):
         json_file_path = self.path / "metadata.json"
         with open(json_file_path, "r") as file:
             metadata = json.load(file)
@@ -115,7 +113,7 @@ class Assemble_Clean_Text:
             file.write(self.clean_text_w_img_markers)
         logger.info("Saved assembled text at %s", save_path)
 
-    def save_clean_metada(self):
+    def save_clean_metadata(self):
         clean_json_path = self.path / "clean_metadata.json"
         with open(clean_json_path, "w") as file:
             json.dump(self.clean_metadata, file)
@@ -147,31 +145,36 @@ if __name__ == "__main__":
 
     setup_logging(config)
     scraped_path = Path("/home/bartek/Kod/PD/praca_dyplomowa/dane/scraping")
-    for site_path in list(scraped_path.glob("*"))[18:22]:
+    for site_path in list(scraped_path.glob("*")):
         if str(site_path).endswith("json"):
             continue
         if not list(site_path.glob("*")):
             continue
         ttext_path = site_path / "clean_text.txt"
         image_text_path = site_path / "text_w_image_markers.txt"
-        with open(ttext_path, "r") as file:
-            ttext = file.read()
+        try:
+            with open(ttext_path, "r") as file:
+                ttext = file.read()
+        except FileNotFoundError:
+            logger.error("There was no clean text for %s", site_path.stem)
+            continue
         with open(image_text_path, "r") as file:
             image_text = file.read()
         print(f"Title: {site_path.stem}")
+        logger.info("Started working on: %s", site_path.stem)
         text_cleaner = Assemble_Clean_Text(ttext, image_text, site_path)
-        print("<>" * 40)
-        print(text_cleaner.trafilatura_text)
-        print("--" * 40)
-        print(text_cleaner.img_markers_text)
-        print("--" * 40)
-        # print(text_cleaner.reversed_words_list_diff)
-        print(text_cleaner.clean_text_w_img_markers)
-        print("--" * 40)
-        # print(text_cleaner.image_markers_from_clean_text)
+        # print("<>" * 40)
+        # print(text_cleaner.trafilatura_text)
         # print("--" * 40)
-        # print(text_cleaner.first_trafilatura_text_word)
+        # print(text_cleaner.img_markers_text)
+        # print("--" * 40)
+        # # print(text_cleaner.reversed_words_list_diff)
+        # print(text_cleaner.clean_text_w_img_markers)
+        # print("--" * 40)
+        # # print(text_cleaner.image_markers_from_clean_text)
+        # # print("--" * 40)
+        # # print(text_cleaner.first_trafilatura_text_word)
 
-        # text_cleaner.save_assembled_text()
-        # text_cleaner.save_clean_metada()
-        print("<>" * 40)
+        text_cleaner.save_assembled_text()
+        text_cleaner.save_clean_metadata()
+        # print("<>" * 40)
