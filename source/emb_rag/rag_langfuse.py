@@ -1,6 +1,8 @@
 import logging
+import os
 import pickle
 from pathlib import Path
+from uuid import uuid4
 
 import torch
 from config import (
@@ -16,6 +18,7 @@ from config import (
     SPLITS_FILE,
     TEMPERATURE,
 )
+from dotenv import dotenv_values
 from langchain_chroma import Chroma
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_classic.retrievers.contextual_compression import (
@@ -30,6 +33,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import ChatOllama
+from langfuse import get_client, propagate_attributes
+from langfuse.langchain import CallbackHandler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,14 +42,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 torch.cuda.empty_cache()
-# torch.set_float32_matmul_precision("high")
 
 
-# Retriever setup
+config = dotenv_values(".env")
+
+OPENAI_API_KEY = config.get("OPENAI_API_KEY")
+
+os.environ["LANGFUSE_PUBLIC_KEY"] = LANGFUSE_PUBLIC_KEY
+os.environ["LANGFUSE_SECRET_KEY"] = LANGFUSE_SECRET_KEY
+os.environ["LANGFUSE_HOST"] = LANGFUSE_HOST
+
+# Initialize Langfuse client (reads from environment variables)
+langfuse = get_client()
 
 
+# Retriever setup (unchanged)
 def load_split_documents(splits_path: Path) -> list[Document]:
-    """Load pre-split documents from pickle file for BM25 retriever."""
     logger.info("Loading split documents from %s", splits_path)
     with splits_path.open("rb") as f:
         return pickle.load(f)
@@ -56,7 +69,6 @@ def create_dense_retriever(
     model_name: str = EMBEDDING_MODEL,
     k: int = DENSE_K,
 ):
-    """Load existing Chroma vectorstore and return as retriever."""
     logger.info("Loading Chroma vectorstore from %s", persist_dir)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -79,7 +91,6 @@ def create_dense_retriever(
 def create_bm25_retriever(
     documents: list[Document], k: int = SPARSE_K
 ) -> BM25Retriever:
-    """Create BM25 retriever from documents."""
     logger.info("Creating BM25 retriever from %d documents", len(documents))
     return BM25Retriever.from_documents(documents, k=k)
 
@@ -89,7 +100,6 @@ def create_hybrid_retriever(
     sparse_retriever,
     weights: tuple[float, float] = (DENSE_WEIGHT, 1.0 - DENSE_WEIGHT),
 ) -> EnsembleRetriever:
-    """Create ensemble retriever combining dense and sparse retrievers."""
     logger.info(
         "Creating hybrid retriever with weights: dense=%.2f, sparse=%.2f",
         weights[0],
@@ -106,7 +116,6 @@ def create_reranked_retriever(
     reranker_model: str = RERANKER_MODEL,
     top_n: int = RERANK_TOP_N,
 ) -> ContextualCompressionRetriever:
-    """Wrap retriever with cross-encoder reranker."""
     logger.info("Creating reranker with model %s, top_n=%d", reranker_model, top_n)
 
     cross_encoder = HuggingFaceCrossEncoder(model_name=reranker_model)
@@ -123,7 +132,6 @@ def setup_retriever(
     splits_file: Path = SPLITS_FILE,
     collection_name: str = COLLECTION_NAME,
 ) -> ContextualCompressionRetriever:
-    """Set up the full hybrid retrieval pipeline."""
     if torch.cuda.is_available():
         torch.set_float32_matmul_precision("high")
         logger.info("Using CUDA device")
@@ -136,13 +144,8 @@ def setup_retriever(
     return create_reranked_retriever(hybrid_retriever)
 
 
-# =============================================================================
 # RAG chain
-# =============================================================================
-
-
 def format_docs(docs: list[Document]) -> str:
-    """Format retrieved documents for the prompt context."""
     formatted = []
     for i, doc in enumerate(docs, 1):
         source = doc.metadata.get("title", "Unknown")
@@ -156,33 +159,25 @@ def create_rag_chain(
     model_name: str = OLLAMA_MODEL,
     temperature: float = TEMPERATURE,
 ):
-    """Create the RAG chain with retriever and Ollama LLM.
-
-    Args:
-        retriever: The retriever to use for fetching relevant documents.
-        model_name: Ollama model name.
-        temperature: Sampling temperature.
-    """
     logger.info("Creating RAG chain with model %s", model_name)
 
     llm = ChatOllama(
         model=model_name,
         temperature=temperature,
-        keep_alive=-1,  # keep model loaded in memory
+        keep_alive=-1,
         reasoning=False,
     )
 
-    system_prompt = """You are a cybersecurity expert assistant. Answer the question using ONLY the provided context.
+    system_prompt = """You are a cybersecurity expert. Answer using ONLY the provided context.
 
-    When citing information, reference: [Source: {title}, {url}]
+When citing information, include [Source: {title}, {url}].
 
-    If the context does not contain sufficient information to answer the question, respond:
-    "The provided context does not contain enough information to answer this question completely. Based on what's available: [answer what you can from context]"
+If the context does not contain sufficient information, state: "The provided context does not contain enough information to answer this question completely."
 
-    Do not use information outside the provided context.
+Do not use information outside the provided context.
 
-    Context:
-    {context}"""
+Context:
+{context}"""
 
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -201,42 +196,92 @@ def create_rag_chain(
     return chain
 
 
-# =============================================================================
 # Query functions
-# =============================================================================
-
-
-def query(chain, question: str) -> str:
-    """Run a single query through the RAG chain."""
+def query(chain, question: str, session_id: str = None) -> str:
+    """Run a single query with Langfuse tracking."""
     logger.info("Processing query: %s", question[:50])
-    return chain.invoke(question)
+
+    # Initialize handler - automatically inherits current trace context
+    langfuse_handler = CallbackHandler()
+
+    # Set trace attributes via metadata
+    metadata = {}
+    if session_id:
+        metadata["langfuse_session_id"] = session_id
+
+    return chain.invoke(
+        question, config={"callbacks": [langfuse_handler], "metadata": metadata}
+    )
 
 
 def query_with_sources(
-    retriever, chain, question: str
+    retriever, chain, question: str, session_id: str = None, user_id: str = None
 ) -> tuple[str, list[dict[str, str]]]:
-    """Run a query and return both the answer and source metadata."""
+    """Run a query and return answer with sources, tracked in Langfuse."""
     logger.info("Processing query with sources: %s", question[:50])
-    docs = retriever.invoke(question)
-    answer = chain.invoke(question)
 
-    sources = [
-        {
-            "title": doc.metadata.get("title", "Unknown"),
-            "url": doc.metadata.get("url", "Unknown"),
-            "language": doc.metadata.get("language", "Unknown"),
-            "urldate": doc.metadata.get("urldate", "Unknown"),
-        }
-        for doc in docs
-    ]
+    # Create trace context
+    with langfuse.start_as_current_observation(
+        as_type="span", name="rag_query_with_sources"
+    ) as query_span:
+        # Set trace attributes
+        with propagate_attributes(
+            session_id=session_id,
+            user_id=user_id,
+        ):
+            query_span.update_trace(
+                input={"question": question},
+                metadata={
+                    "model": OLLAMA_MODEL,
+                    "temperature": TEMPERATURE,
+                    "embedding_model": EMBEDDING_MODEL,
+                    "reranker": RERANKER_MODEL,
+                    "dense_k": DENSE_K,
+                    "sparse_k": SPARSE_K,
+                    "rerank_top_n": RERANK_TOP_N,
+                },
+            )
+
+            # Retrieval span
+            with langfuse.start_as_current_observation(
+                as_type="span", name="retrieval"
+            ) as retrieval_span:
+                docs = retriever.invoke(question)
+                retrieval_span.update(
+                    output={
+                        "num_docs": len(docs),
+                        "doc_lengths": [len(d.page_content) for d in docs],
+                    }
+                )
+
+            # Log retrieved chunks for debugging
+            print("\n" + "=" * 80)
+            print("RETRIEVED CHUNKS:")
+            for i, doc in enumerate(docs, 1):
+                print(f"\n--- Chunk {i} ({len(doc.page_content)} chars) ---")
+                print(doc.page_content[:200] + "...")
+            print("=" * 80 + "\n")
+
+            # Generation span with LangChain handler
+            langfuse_handler = CallbackHandler()
+            answer = chain.invoke(question, config={"callbacks": [langfuse_handler]})
+
+            sources = [
+                {
+                    "title": doc.metadata.get("title", "Unknown"),
+                    "url": doc.metadata.get("url", "Unknown"),
+                    "language": doc.metadata.get("language", "Unknown"),
+                    "urldate": doc.metadata.get("urldate", "Unknown"),
+                }
+                for doc in docs
+            ]
+
+            query_span.update_trace(output={"answer": answer, "sources": sources})
+
     return answer, sources
 
 
-# =============================================================================
 # Initialization
-# =============================================================================
-
-
 def initialize_rag(
     chroma_dir: Path = CHROMA_DIR,
     splits_file: Path = SPLITS_FILE,
@@ -244,22 +289,17 @@ def initialize_rag(
     model_name: str = OLLAMA_MODEL,
     temperature: float = TEMPERATURE,
 ):
-    """Initialize and return the retriever and RAG chain.
-
-    Returns:
-        tuple: (retriever, rag_chain)
-    """
     retriever = setup_retriever(chroma_dir, splits_file, collection_name)
     chain = create_rag_chain(retriever, model_name, temperature)
     return retriever, chain
 
 
-# =============================================================================
 # Example usage
-# =============================================================================
-
 if __name__ == "__main__":
     retriever, rag_chain = initialize_rag()
+
+    # Create a session for related queries
+    session_id = str(uuid4())
 
     test_query = input("Cybersecurity (malware) question: \n\n")
 
@@ -267,9 +307,17 @@ if __name__ == "__main__":
     print(f"Query: {test_query}")
     print(f"{'=' * 80}\n")
 
-    # response = query(rag_chain, test_query)
-    response, sources = query_with_sources(retriever, rag_chain, test_query)
+    response, sources = query_with_sources(
+        retriever,
+        rag_chain,
+        test_query,
+        session_id=session_id,
+        user_id="bartek",  # Optional
+    )
 
     print(f"Response: {response}")
     print(f"{'=' * 80}\n")
     print(f"Sources: {sources}")
+
+    # Flush to ensure all data is sent
+    langfuse.flush()

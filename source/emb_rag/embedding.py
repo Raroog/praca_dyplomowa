@@ -4,6 +4,7 @@ from pathlib import Path
 
 import torch
 from langchain_chroma import Chroma
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -13,18 +14,26 @@ from .config import COLLECTION_NAME, EMBEDDING_MODEL, SPLITTING_MODEL
 torch.cuda.is_available()
 torch.set_float32_matmul_precision("high")
 
-splitting_embeddings = HuggingFaceEmbeddings(
-    model_name=SPLITTING_MODEL,
-    model_kwargs={
-        "device": "cuda",
-    },
+# splitting_embeddings = HuggingFaceEmbeddings(
+#     model_name=SPLITTING_MODEL,
+#     model_kwargs={
+#         "device": "cuda",
+#     },
+# )
+
+# text_splitter = SemanticChunker(
+#     embeddings=splitting_embeddings,
+#     breakpoint_threshold_type="percentile",
+#     breakpoint_threshold_amount=0.9,
+# )
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=512,
+    chunk_overlap=50,
+    separators=["\n\n", "\n", ". ", " ", ""],
+    length_function=len,
 )
 
-text_splitter = SemanticChunker(
-    embeddings=splitting_embeddings,
-    breakpoint_threshold_type="percentile",
-    breakpoint_threshold_amount=0.9,
-)
 
 docs_dir = Path("/home/bartek/Kod/PD/praca_dyplomowa/dane/texts/cleaned_texts")
 documents = []
@@ -50,15 +59,18 @@ print(f"Loaded {len(documents)} documents")
 
 split_docs = text_splitter.split_documents(documents)
 
+# splits_file = Path(
+#     f"/home/bartek/Kod/PD/praca_dyplomowa/dane/vectordb/{SPLITTING_MODEL.split('/')[1]}_split_documents.pkl"
+# )
 splits_file = Path(
-    f"/home/bartek/Kod/PD/praca_dyplomowa/dane/vectordb/{SPLITTING_MODEL.split('/')[1]}_split_documents.pkl"
+    "/home/bartek/Kod/PD/praca_dyplomowa/dane/vectordb/recursive_split_documents.pkl"
 )
 with open(splits_file, "wb") as f:
     pickle.dump(split_docs, f)
 
-del splitting_embeddings
-del text_splitter
-torch.cuda.empty_cache()
+# del splitting_embeddings
+# del text_splitter
+# torch.cuda.empty_cache()
 
 with open(splits_file, "rb") as f:
     split_docs = pickle.load(f)
