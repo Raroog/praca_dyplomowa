@@ -53,7 +53,6 @@ with langfuse.start_as_current_observation(
         splitting_embeddings = HuggingFaceEmbeddings(
             model_name=SPLITTING_MODEL,
             model_kwargs={"device": "cuda"},
-            encode_kwargs={"normalize_embeddings": True, "batch_size": 8},
         )
 
         text_splitter = SemanticChunker(
@@ -191,10 +190,7 @@ with langfuse.start_as_current_observation(
         del splitting_embeddings
         del text_splitter
         torch.cuda.empty_cache()
-
-    # Reload splits (simulates production scenario)
-    with open(splits_file, "rb") as f:
-        split_docs = pickle.load(f)
+        print("emptied CUDA cache")
 
     # Embedding span
     with langfuse.start_as_current_observation(
@@ -203,7 +199,7 @@ with langfuse.start_as_current_observation(
         embeddings = HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL,
             model_kwargs={"device": "cuda", "trust_remote_code": True},
-            encode_kwargs={"normalize_embeddings": True, "batch_size": 64},
+            encode_kwargs={"normalize_embeddings": True, "batch_size": 16},
         )
 
         chroma_db_path = Path(

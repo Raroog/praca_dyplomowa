@@ -25,7 +25,7 @@ if config:
         "SPLITTER_TYPE", "recursive"
     )  # "semantic" or "recursive"
     SPLITTING_MODEL = config.get(f"SPLITTING_MODEL{v}", "")
-    SEMANTIC_THRESHOLD = float(config.get(f"SEMANTIC_THRESHOLD{v}", 0.6))
+    SEMANTIC_THRESHOLD = float(config.get("SEMANTIC_THRESHOLD", 0.6))
     CHUNK_SIZE = int(config.get(f"CHUNK_SIZE{v}", 1024))
     CHUNK_OVERLAP = int(config.get(f"CHUNK_OVERLAP{v}", 150))
 
