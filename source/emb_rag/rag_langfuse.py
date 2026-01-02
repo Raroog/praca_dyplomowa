@@ -173,7 +173,7 @@ def create_rag_chain(
 
     system_prompt = """You are a cybersecurity expert. Answer using ONLY the provided context.
 
-When citing information, include [Source: {title}, {url}].
+When citing information, include [Source: {{title}}, {{url}}].
 
 If the context does not contain sufficient information, state: "The provided context does not contain enough information to answer this question completely."
 
@@ -297,6 +297,68 @@ def initialize_rag(
     return retriever, chain
 
 
+def compare_prompts(
+    retriever,
+    query: str,
+    model_name: str = OLLAMA_MODEL,
+    temperature: float = TEMPERATURE,
+) -> None:
+    """Compare different prompts on the same retrieved context."""
+    context_docs = retriever.invoke(query)
+    context = "\n\n".join([doc.page_content for doc in context_docs[:5]])
+
+    print(f"\n{'=' * 80}")
+    print("RETRIEVED SOURCES:")
+    print("=" * 80)
+    for i, doc in enumerate(context_docs[:5], 1):
+        title = doc.metadata.get("title", "Unknown")
+        url = doc.metadata.get("url", "N/A")
+        language = doc.metadata.get("language", "Unknown")
+        urldate = doc.metadata.get("urldate", "Unknown")
+        print(f"{i}. {title}")
+        print(f"   URL: {url}")
+        print(f"   Language: {language}")
+        print(f"   Date accessed: {urldate}")
+    print()
+
+    prompts = {
+        "no_context": """You are a cybersecurity expert.
+Question: {question}""",
+        "permissive": """You are a cybersecurity expert. Use the provided context to inform your answer,
+but you may also draw on your general knowledge when context is incomplete.
+Context:
+{context}
+Question: {question}""",
+        "strict": """You are a cybersecurity expert. Answer ONLY using the provided context.
+Do not use external knowledge. If context is insufficient, say so explicitly.
+Context:
+{context}
+Question: {question}""",
+        "guided": """You are a cybersecurity expert. Answer using the provided context.
+Instructions:
+1. Base your answer primarily on the context
+2. Quote relevant parts: [Source: title, url]
+3. If context doesn't fully answer, state: "Based on available context: [answer], but this doesn't cover [missing aspect]"
+Context:
+{context}
+Question: {question}""",
+    }
+
+    llm = ChatOllama(model=model_name, temperature=temperature)
+
+    for name, template in prompts.items():
+        print(f"\n{'=' * 80}")
+        print(f"PROMPT TYPE: {name}")
+        print("=" * 80)
+
+        prompt = ChatPromptTemplate.from_template(template)
+        chain = prompt | llm | StrOutputParser()
+
+        response = chain.invoke({"context": context, "question": query})
+        print(response)
+        print()
+
+
 # Example usage
 if __name__ == "__main__":
     retriever, rag_chain = initialize_rag()
@@ -304,23 +366,26 @@ if __name__ == "__main__":
     # Create a session for related queries
     session_id = str(uuid4())
 
-    test_query = input("Cybersecurity (malware) question: \n\n")
+    # test_query = input("Cybersecurity (malware) question: \n\n")
 
-    print(f"\n{'=' * 80}")
-    print(f"Query: {test_query}")
-    print(f"{'=' * 80}\n")
+    # print(f"\n{'=' * 80}")
+    # print(f"Query: {test_query}")
+    # print(f"{'=' * 80}\n")
 
-    response, sources = query_with_sources(
-        retriever,
-        rag_chain,
-        test_query,
-        session_id=session_id,
-        user_id="bartek",  # Optional
-    )
+    # response, sources = query_with_sources(
+    #     retriever,
+    #     rag_chain,
+    #     test_query,
+    #     session_id=session_id,
+    #     user_id="bartek",  # Optional
+    # )
 
-    print(f"Response: {response}")
-    print(f"{'=' * 80}\n")
-    print(f"Sources: {sources}")
+    # print(f"Response: {response}")
+    # print(f"{'=' * 80}\n")
+    # print(f"Sources: {sources}")
+
+    test_query_compare = input("Cybersecurity (malware) question: \n\n")
+    compare_prompts(retriever, test_query_compare)
 
     # Flush to ensure all data is sent
     langfuse.flush()
