@@ -1,6 +1,7 @@
 import logging
 import os
 import pickle
+import re
 from pathlib import Path
 from uuid import uuid4
 
@@ -91,11 +92,19 @@ def create_dense_retriever(
     return vectorstore.as_retriever(search_kwargs={"k": k})
 
 
+def bm25_preprocess(text: str) -> list[str]:
+    return re.findall(r"\b\w+\b", text.lower())
+
+
 def create_bm25_retriever(
     documents: list[Document], k: int = SPARSE_K
 ) -> BM25Retriever:
     logger.info("Creating BM25 retriever from %d documents", len(documents))
-    return BM25Retriever.from_documents(documents, k=k)
+    return BM25Retriever.from_documents(
+        documents,
+        k=k,
+        preprocess_func=bm25_preprocess,
+    )
 
 
 def create_hybrid_retriever(
@@ -297,7 +306,7 @@ def initialize_rag(
     return retriever, chain
 
 
-def compare_prompts(
+def compare_prompts_(
     retriever,
     query: str,
     model_name: str = OLLAMA_MODEL,
@@ -324,16 +333,16 @@ def compare_prompts(
     prompts = {
         "no_context": """You are a cybersecurity expert.
 Question: {question}""",
-        "permissive": """You are a cybersecurity expert. Use the provided context to inform your answer,
-but you may also draw on your general knowledge when context is incomplete.
-Context:
-{context}
-Question: {question}""",
-        "strict": """You are a cybersecurity expert. Answer ONLY using the provided context.
-Do not use external knowledge. If context is insufficient, say so explicitly.
-Context:
-{context}
-Question: {question}""",
+        #         "permissive": """You are a cybersecurity expert. Use the provided context to inform your answer,
+        # but you may also draw on your general knowledge when context is incomplete.
+        # Context:
+        # {context}
+        # Question: {question}""",
+        #         "strict": """You are a cybersecurity expert. Answer ONLY using the provided context.
+        # Do not use external knowledge. If context is insufficient, say so explicitly.
+        # Context:
+        # {context}
+        # Question: {question}""",
         "guided": """You are a cybersecurity expert. Answer using the provided context.
 Instructions:
 1. Base your answer primarily on the context
@@ -354,6 +363,122 @@ Question: {question}""",
         prompt = ChatPromptTemplate.from_template(template)
         chain = prompt | llm | StrOutputParser()
 
+        response = chain.invoke({"context": context, "question": query.lower()})
+        print(response)
+        print()
+
+
+def filter_relevant_docs(
+    query: str,
+    docs: list[Document],
+    score_threshold: float = 0.5,
+    verbose: bool = True,
+) -> list[Document]:
+    """Filter docs by reranker score."""
+    cross_encoder = HuggingFaceCrossEncoder(model_name=RERANKER_MODEL)
+    pairs = [(query, doc.page_content) for doc in docs]
+    scores = cross_encoder.score(pairs)
+
+    passed = [
+        (doc, score) for doc, score in zip(docs, scores) if score >= score_threshold
+    ]
+    failed = [
+        (doc, score) for doc, score in zip(docs, scores) if score < score_threshold
+    ]
+
+    if verbose:
+        print(f"\n{'=' * 80}")
+        print(f"RELEVANCE FILTER (threshold: {score_threshold})")
+        print("=" * 80)
+        print(f"\n[PASSED: {len(passed)}]")
+        for doc, score in passed:
+            print(f"  [{score:.3f}] {doc.metadata.get('title', '?')[:60]}")
+        print(f"\n[FILTERED: {len(failed)}]")
+        for doc, score in failed[:5]:
+            print(f"  [{score:.3f}] {doc.metadata.get('title', '?')[:60]}")
+
+    return [doc for doc, _ in passed]
+
+
+def compare_prompts(
+    retriever,
+    query: str,
+    model_name: str = OLLAMA_MODEL,
+    temperature: float = TEMPERATURE,
+    relevance_threshold: float = 0.5,
+) -> None:
+    """Compare different prompts on the same retrieved context."""
+    context_docs = retriever.invoke(query)
+
+    # Filter and show what passes/fails
+    relevant_docs = filter_relevant_docs(
+        query, context_docs, score_threshold=relevance_threshold, verbose=True
+    )
+
+    context = "\n\n".join([doc.page_content for doc in relevant_docs[:5]])
+    has_relevant_context = len(relevant_docs) > 0
+
+    print(f"\n{'=' * 80}")
+    print(
+        f"RETRIEVED SOURCES ({len(relevant_docs)} relevant / {len(context_docs)} total):"
+    )
+    print("=" * 80)
+    for i, doc in enumerate(relevant_docs[:5], 1):
+        title = doc.metadata.get("title", "Unknown")
+        url = doc.metadata.get("url", "N/A")
+        print(f"{i}. {title}")
+        print(f"   URL: {url}")
+    print()
+
+    prompts = {
+        "no_context": """You are a cybersecurity expert.
+Question: {question}""",
+        "with_context": """You are a cybersecurity expert. Use the provided context to inform your answer,
+but you may also draw on your general knowledge when context is incomplete.
+Context:
+{context}
+Question: {question}""",
+        "adaptive": """You are a cybersecurity expert.
+
+First, assess if the provided context is relevant to the question.
+- If relevant: answer using the context and cite sources
+- If not relevant or only partially relevant: answer based on your knowledge, noting what the context does/doesn't cover
+
+Context:
+{context}
+
+Question: {question}""",
+        "judged": """You are a cybersecurity expert.
+
+Context (may or may not be relevant):
+{context}
+
+Question: {question}
+
+Instructions:
+1. If the context directly answers the question, use it and cite [Source: title, url]
+2. If the context is tangentially related, you may reference it but answer more broadly
+3. If the context is irrelevant, ignore it and answer from your knowledge
+4. State which approach you took""",
+    }
+
+    llm = ChatOllama(model=model_name, temperature=temperature)
+
+    for name, template in prompts.items():
+        # Skip context-based prompts if no relevant docs
+        if not has_relevant_context and "{context}" in template:
+            print(f"\n{'=' * 80}")
+            print(f"PROMPT TYPE: {name} [SKIPPED - no relevant context]")
+            print("=" * 80)
+            continue
+
+        print(f"\n{'=' * 80}")
+        print(f"PROMPT TYPE: {name}")
+        print("=" * 80)
+
+        prompt = ChatPromptTemplate.from_template(template)
+        chain = prompt | llm | StrOutputParser()
+
         response = chain.invoke({"context": context, "question": query})
         print(response)
         print()
@@ -361,13 +486,16 @@ Question: {question}""",
 
 # Example usage
 if __name__ == "__main__":
-    retriever, rag_chain = initialize_rag()
+    # split_docs = load_split_documents(SPLITS_FILE)
+    # dense_retriever = create_dense_retriever(CHROMA_DIR, COLLECTION_NAME)
+    # sparse_retriever = create_bm25_retriever(split_docs)
+    # hybrid_retriever = create_hybrid_retriever(dense_retriever, sparse_retriever)
 
+    retriever, rag_chain = initialize_rag()
     # Create a session for related queries
     session_id = str(uuid4())
 
     # test_query = input("Cybersecurity (malware) question: \n\n")
-
     # print(f"\n{'=' * 80}")
     # print(f"Query: {test_query}")
     # print(f"{'=' * 80}\n")
@@ -379,7 +507,6 @@ if __name__ == "__main__":
     #     session_id=session_id,
     #     user_id="bartek",  # Optional
     # )
-
     # print(f"Response: {response}")
     # print(f"{'=' * 80}\n")
     # print(f"Sources: {sources}")
