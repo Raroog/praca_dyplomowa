@@ -9,6 +9,8 @@ __pycache__/
 #misc
 dane/
 fonts/
+benchmark_data_async/
+benchmark_data_sync/
 
 # Distribution / packaging
 .Python
@@ -166,3 +168,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+config.yaml
+logs/application.log.1
+.gitignore
+logs/application.log.2
+logs/application.log.3

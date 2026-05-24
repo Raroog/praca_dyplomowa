@@ -40,6 +40,7 @@ if config:
     OLLAMA_MODEL = config.get("OLLAMA_MODEL")
 
     # Retrieval configuration
+    RELEVANCE_THRESHOLD = float(config.get("RELEVANCE_THRESHOLD"))
     DENSE_K = int(config.get("DENSE_K"))
     SPARSE_K = int(config.get("SPARSE_K"))
     RERANK_TOP_N = int(config.get("RERANK_TOP_N"))

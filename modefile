@@ -1,0 +1,7 @@
+FROM gpt-oss:20b
+
+PARAMETER temperature 0.0
+PARAMETER top_k 10
+PARAMETER top_p 0.1
+
+SYSTEM 

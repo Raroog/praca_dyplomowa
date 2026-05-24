@@ -89,8 +89,6 @@ async def main():
     setup_logging(config)
     base_path = config.get("scraping", {}).get("base_path")
 
-    # Get the number of concurrent connections from config or default to 50
-    # With 14th gen Intel, 32GB RAM and 900 Mbps download, we can handle higher concurrency
     max_concurrent = config.get("scraping", {}).get("max_concurrent", 50)
 
     malpedia_bib = GetMalpediaBibFile()
@@ -119,8 +117,6 @@ async def main():
                 return await process_site(
                     session, site_data, base_path, bib_parser.blacklist
                 )
-
-        # Process all sites concurrently but limited by the semaphore
 
         tasks = [process_with_semaphore(site) for site in bib_parser.bib_list_of_dicts]
 

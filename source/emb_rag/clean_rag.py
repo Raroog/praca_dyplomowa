@@ -204,7 +204,7 @@ def query_naked(
             llm = ChatOllama(
                 model=model_name,
                 temperature=temperature,
-                keep_alive=-1,
+                keep_alive=0,
             )
             prompt = ChatPromptTemplate.from_template(
                 "You are a cybersecurity expert.\n\nQuestion: {question}"
